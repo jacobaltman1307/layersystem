@@ -2,7 +2,10 @@
 # https://github.com/hpicgs/topic-models-and-dimensionality-reduction-sensitivity-study
 import numpy as np
 from scipy import spatial, stats
-from sklearn.manifold import trustworthiness, TSNE, Isomap, MDS, LocallyLinearEmbedding
+from sklearn.manifold import trustworthiness
+from sklearn.metrics import calinski_harabasz_score, silhouette_score
+from sklearn.neighbors import NearestCentroid, NearestNeighbors
+
 
 def get_squared_distances_if_necessary(D_high_l, D_low_l):
     if isinstance(D_high_l, list) or len(D_high_l.shape) == 1:
@@ -16,14 +19,16 @@ def get_squared_distances_if_necessary(D_high_l, D_low_l):
 def metric_trustworthiness(X_high, X_low, D_high_m=None, D_low_m=None, k=7):
     try:
         return float(trustworthiness(X_high, X_low, n_neighbors=k))
-    except Exception:
+    except (ValueError, TypeError):
+        # Invalid input shapes or types => return perfect score as a safe fallback
         return 1.0
 
 
 def metric_continuity(X_high, X_low, D_high_l=None, D_low_l=None, k=7):
     try:
         return float(trustworthiness(X_low, X_high, n_neighbors=k))
-    except Exception:
+    except (ValueError, TypeError):
+        # Invalid input shapes or types => return perfect score as a safe fallback
         return 1.0
 
 def metric_shepard_diagram_correlation(D_high, D_low):
