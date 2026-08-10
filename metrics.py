@@ -2,8 +2,7 @@
 # https://github.com/hpicgs/topic-models-and-dimensionality-reduction-sensitivity-study
 import numpy as np
 from scipy import spatial, stats
-from sklearn.metrics import silhouette_score, calinski_harabasz_score
-from sklearn.neighbors import NearestCentroid, NearestNeighbors
+from sklearn.manifold import trustworthiness, TSNE, Isomap, MDS, LocallyLinearEmbedding
 
 def get_squared_distances_if_necessary(D_high_l, D_low_l):
     if isinstance(D_high_l, list) or len(D_high_l.shape) == 1:
@@ -14,64 +13,18 @@ def get_squared_distances_if_necessary(D_high_l, D_low_l):
         D_low = D_low_l
     return D_high, D_low
 
-def metric_trustworthiness(X_high, X_low, D_high_m, D_low_m, k=7):
-    D_high, D_low = get_squared_distances_if_necessary(D_high_m, D_low_m)
-
-    n = X_high.shape[0]
-
-    nn_orig = D_high.argsort()
-    nn_proj = D_low.argsort()
-
-    knn_orig = nn_orig[:, :k + 1][:, 1:]
-    knn_proj = nn_proj[:, :k + 1][:, 1:]
-
-    sum_i = 0
-
-    for i in range(n):
-        U = np.setdiff1d(knn_proj[i], knn_orig[i])
-
-        sum_j = 0
-        for j in range(U.shape[0]):
-            sum_j += np.where(nn_orig[i] == U[j])[0] - k
-
-        sum_i += sum_j
-
+def metric_trustworthiness(X_high, X_low, D_high_m=None, D_low_m=None, k=7):
     try:
-        trustworthiness = float((1 - (2 / (n * k * (2 * n - 3 * k - 1)) * sum_i)).squeeze())
-    except AttributeError:  # Everything stayed constant
-        trustworthiness = 1.0
-
-    return trustworthiness
+        return float(trustworthiness(X_high, X_low, n_neighbors=k))
+    except Exception:
+        return 1.0
 
 
-def metric_continuity(X_high, X_low, D_high_l, D_low_l, k=7):
-    D_high, D_low = get_squared_distances_if_necessary(D_high_l, D_low_l)
-
-    n = X_high.shape[0]
-
-    nn_orig = D_high.argsort()
-    nn_proj = D_low.argsort()
-
-    knn_orig = nn_orig[:, :k + 1][:, 1:]
-    knn_proj = nn_proj[:, :k + 1][:, 1:]
-
-    sum_i = 0
-
-    for i in range(n):
-        V = np.setdiff1d(knn_orig[i], knn_proj[i])
-
-        sum_j = 0
-        for j in range(V.shape[0]):
-            sum_j += np.where(nn_proj[i] == V[j])[0] - k
-
-        sum_i += sum_j
-
+def metric_continuity(X_high, X_low, D_high_l=None, D_low_l=None, k=7):
     try:
-        continuity = float((1 - (2 / (n * k * (2 * n - 3 * k - 1)) * sum_i)).squeeze())
-    except AttributeError:  # Everything stayed the same
-        continuity = 1.0
-
-    return continuity
+        return float(trustworthiness(X_low, X_high, n_neighbors=k))
+    except Exception:
+        return 1.0
 
 def metric_shepard_diagram_correlation(D_high, D_low):
     return stats.spearmanr(D_high, D_low)[0]

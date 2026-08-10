@@ -49,8 +49,12 @@ def DimReduction(X, y, t, outputDim, catagories):
             isomap = Isomap(n_components=outputDim, n_neighbors=15)
             out = isomap.fit_transform(X_processed)
         case "MDS":
-            mds = MDS(n_components=outputDim, random_state=42,n_init=2,max_iter=25)
-            out = mds.fit_transform(X_processed)
+            X_proc_clean = np.nan_to_num(X_processed, nan=0.0, posinf=0.0, neginf=0.0)
+            from sklearn.metrics import euclidean_distances
+            D = euclidean_distances(X_proc_clean)
+            D = (D + D.T) / 2.0
+            mds = MDS(n_components=outputDim, random_state=42, n_init=2, max_iter=25, dissimilarity='precomputed', init='random')
+            out = mds.fit_transform(D)
         case "LLE":
             lle = LocallyLinearEmbedding(n_components=outputDim, random_state=42, eigen_solver="dense")
             out = lle.fit_transform(X_processed)

@@ -43,14 +43,7 @@ def Factory(layers, embeddingFile, proven, comparison, metrics):
                 unchanged = ReductionLayer(unchanged,loaded_categories,algo,outputDim, loaded_categories_list)
 
     if metrics:
-        # Calculate pairwise distances for the metric
-        # Using original_embeddings as X_high and loaded_embeddings as X_low
-        D_high = pdist(original_embeddings)
-        D_low = pdist(loaded_embeddings)
-        #trust_score = metric_trustworthiness(original_embeddings, loaded_embeddings, D_high, D_low)
-        #print(f"Trustworthiness Score: {trust_score}")
-
-        continunity = metric_continuity(original_embeddings, loaded_embeddings, D_high, D_low)
+        continunity = metric_continuity(original_embeddings, loaded_embeddings)
         #print(f"Continuity: {continunity}")
         
         cluster_ordering = metric_cluster_ordering(loaded_embeddings, unchanged, loaded_categories)

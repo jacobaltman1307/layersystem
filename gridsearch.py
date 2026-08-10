@@ -46,9 +46,8 @@ def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,un
                 unchanged = ReductionLayer(unchanged,loaded_categories,algo,outputDim, loaded_categories_list)
 
    
-    D_low = pdist(loaded_embeddings)
-    trustworthiness = metric_trustworthiness(original_embeddings, loaded_embeddings, D_high, D_low)
-    continuity = metric_continuity(original_embeddings, loaded_embeddings, D_high, D_low)
+    trustworthiness = metric_trustworthiness(original_embeddings, loaded_embeddings)
+    continuity = metric_continuity(original_embeddings, loaded_embeddings)
     
     cluster_ordering = metric_cluster_ordering(loaded_embeddings, unchanged, loaded_categories)
     pearson = metric_pearson_correlation(loaded_embeddings, unchanged)
@@ -70,8 +69,7 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     original_embeddings = loaded_embeddings.copy()
     actual_embedding_dim = loaded_embeddings.shape[1]
     
-    # Pre-calculate high-dimensional pairwise distance matrix to avoid recalculation inside Factory
-    D_high = pdist(original_embeddings)
+    D_high = None
     
 
     if resolution == 3:
