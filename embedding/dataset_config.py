@@ -16,7 +16,7 @@ import os
 # ---------------------------------------------------------------------------
 
 DATASETS = {
-    "news": {
+    "emails": {
         "csv": "cleanedData.csv",
         "categories": ["Crime", "Entertainment", "Politics", "Science"],
         "text_col": "Content",
@@ -45,8 +45,8 @@ def add_dataset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--dataset",
         choices=list(DATASETS.keys()),
-        default="news",
-        help=f"Dataset to embed. Choices: {list(DATASETS.keys())} (default: news)",
+        default="emails",
+        help=f"Dataset to embed. Choices: {list(DATASETS.keys())} (default: emails)",
     )
 
 
