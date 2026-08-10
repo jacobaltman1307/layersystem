@@ -59,12 +59,21 @@ def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,un
 
 
 
-def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="unknown", plotting=True):
+def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="unknown", plotting=True, max_samples=None):
     loaded = np.load(embeddingFile, allow_pickle=True)
     loaded_embeddings = loaded["embeddings"]
     loaded_categories = loaded["categories"]
     loaded_categories_list = loaded["categorieslist"]
-    #loaded_texts = loaded["texts"]
+    
+    if max_samples is not None and len(loaded_embeddings) > max_samples:
+        print(f"Subsampling dataset from {len(loaded_embeddings)} to {max_samples} samples for memory efficiency...")
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(loaded_embeddings), size=max_samples, replace=False)
+        loaded_embeddings = loaded_embeddings[idx]
+        loaded_categories = loaded_categories[idx]
+        if len(loaded_categories_list) == len(loaded["embeddings"]):
+            loaded_categories_list = loaded_categories_list[idx]
+
     unchanged = loaded_embeddings
     original_embeddings = loaded_embeddings.copy()
     actual_embedding_dim = loaded_embeddings.shape[1]
@@ -327,6 +336,12 @@ def main():
         default=None,
         help="Dataset name (e.g., 'news', 'agnews', 'yelp'). Auto-detected from embedding file if not specified."
     )
+    parser.add_argument(
+        "-m", "--max-samples",
+        type=int,
+        default=None,
+        help="Subsample dataset to N items max for memory-heavy algorithms like Isomap/MDS (default: None)"
+    )
     args = parser.parse_args()
 
     plot = False
@@ -378,7 +393,7 @@ def main():
 
     #Runs primary dimension reduction type
     for run in runs_to_execute:
-        gridSearch(embedding_file, run, args.dr_type, second_dr_type, args.resolution, embeddingModel, dataset=dataset, plotting=plot)
+        gridSearch(embedding_file, run, args.dr_type, second_dr_type, args.resolution, embeddingModel, dataset=dataset, plotting=plot, max_samples=args.max_samples)
 
 
 if __name__ == "__main__":
