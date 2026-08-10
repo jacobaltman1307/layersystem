@@ -139,7 +139,7 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
                     }
                 }
             ]
-            if outputDim == 768:
+            if outputDim == 768 and actual_embedding_dim == 768:
                 layers = layers[1:]
 
                 #def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,unchanged,original_embeddings, comparison):
