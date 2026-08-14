@@ -34,14 +34,21 @@ def DimReduction(X, y, t, outputDim, catagories):
             pca = PCA(n_components=outputDim)
             out = pca.fit_transform(X_processed)
         case "TSNE":
-            tsne = TSNE(n_components=outputDim, random_state=42)
+            method = "barnes_hut" if outputDim < 4 else "exact"
+            tsne = TSNE(n_components=outputDim, random_state=42, method=method)
             out = tsne.fit_transform(X_processed)
         case "LDA":
-            #print(catagories)
-            if outputDim > (len(catagories) - 1):
-                raise ValueError(f"The output Dim for LDA cannot be more than components - 1. max: {len(catagories) - 1} vs your: {outputDim}")
+            if y is not None:
+                n_classes = len(np.unique(y))
+            elif catagories is not None and hasattr(catagories, '__len__'):
+                n_classes = len(np.unique(catagories)) if len(catagories) == len(X) else len(catagories)
+            else:
+                n_classes = outputDim + 1
+            max_lda_dim = n_classes - 1
+            if outputDim > max_lda_dim:
+                raise ValueError(f"The output Dim for LDA cannot be more than components - 1. max: {max_lda_dim} vs your: {outputDim}")
             lda = LinearDiscriminantAnalysis(n_components=outputDim)
-            out = lda.fit_transform(X_processed,y)
+            out = lda.fit_transform(X_processed, y)
         case "SVD":
             svd = TruncatedSVD(n_components=outputDim)
             out = svd.fit_transform(X_processed)

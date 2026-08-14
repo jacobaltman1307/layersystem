@@ -81,6 +81,15 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     D_high = None
     
 
+    # Determine number of categories for adaptive resolutions
+    if loaded_categories_list is not None and hasattr(loaded_categories_list, '__len__') and 0 < len(loaded_categories_list) < len(loaded_embeddings):
+        num_categories = len(loaded_categories_list)
+    else:
+        num_categories = len(np.unique(loaded_categories))
+
+    max_cat_dim = num_categories - 1
+    adaptive_dims = list(range(max_cat_dim, 1, -1)) if max_cat_dim >= 2 else [2]
+
     if resolution == 3:
         epsilons = [1,10,50,100,500,1000,5000,10000]
         outputDimensions = [768,512,256,128,64,32,16,8,4,2]
@@ -93,9 +102,22 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     elif resolution == 0:
         epsilons = [1,2]
         outputDimensions = [768,2]    
+    elif resolution == 5:
+        epsilons = [1,10,50,100,500,1000,5000,10000]
+        outputDimensions = adaptive_dims
     else:
         epsilons = [1,10,50,100,500,1000]
         outputDimensions = [768,3,2]
+
+    # Automatically adapt output dimensions for constrained algorithms like LDA and TSNE
+    constrained_algos = {"LDA", "TSNE"}
+    is_constrained = (
+        (isinstance(dimensionReductionType, str) and dimensionReductionType.upper() in constrained_algos) or
+        (isinstance(secondDimensionReductionType, str) and secondDimensionReductionType.upper() in constrained_algos)
+    )
+    if is_constrained or resolution == 5:
+        outputDimensions = adaptive_dims
+        print(f"Using adaptive resolution for {dimensionReductionType} ({num_categories} categories -> dims {outputDimensions})")
 
     # Cap output dimensions to the actual embedding dimension
     outputDimensions = [d for d in outputDimensions if d <= actual_embedding_dim]
@@ -324,7 +346,7 @@ def main():
         type=int,
         choices=[0, 1, 2, 3, 4, 5],
         default=3,
-        help="Search resolution level from 0 to 5 (default: 3)"
+        help="Search resolution level from 0 to 5 (default: 3, 5=adaptive for LDA/TSNE)"
     )
     parser.add_argument(
         "--no-plot",
