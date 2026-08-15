@@ -27,7 +27,6 @@ METRICS_INFO = [
 HUMAN_UTILITY_METRICS_INFO = [
     ("dbscan_clusters",        "DBSCAN # Clusters"),
     ("spatial_entropy",        "Spatial/Image Entropy"),
-    ("calinski_harabasz",      "Calinski-Harabasz Index"),
     ("overplotting_penalty",   "Overplotting / Crowding Penalty"),
     ("hopkins_statistic",      "Hopkins Statistic"),
     ("absolute_difference",    "Abs Diff Distance Consistency"),
@@ -48,8 +47,9 @@ METRIC_RANGES = {
     "average_metrics":  (-1.0, 1.0),
     "hopkins_statistic": (0.0, 1.0),
     "overplotting_penalty": (0.0, 1.0),
+    "spatial_entropy":  (0.0, 1.0),
     "estimated_human_utility": (None, None),
-    # dbscan_clusters, spatial_entropy, calinski_harabasz -> auto-scale
+    # dbscan_clusters -> auto-scale
 }
 
 # Metrics that benefit from a diverging colormap centred at 0

@@ -87,15 +87,28 @@ def metric_spatial_entropy(X, bins=50):
     hist, _, _ = np.histogram2d(X[:, 0], X[:, 1], bins=bins)
     
     # Normalize to get probability distribution
-    p = hist / np.sum(hist)
+    total_points = np.sum(hist)
+    if total_points == 0:
+        return 0.0
+
+    p = hist / total_points
     
     # Filter out empty bins to avoid log(0) errors
     p_nonzero = p[p > 0]
-    
+    if len(p_nonzero) <= 1:
+        return 0.0
+
     # Calculate Shannon entropy
     entropy = -np.sum(p_nonzero * np.log2(p_nonzero))
     
-    return entropy
+    # Maximum possible Shannon entropy occurs with a uniform distribution over all bins
+    max_entropy = np.log2(hist.size)
+    if max_entropy == 0:
+        return 0.0
+
+    # Scale from 0 to 1
+    return float(np.clip(entropy / max_entropy, 0.0, 1.0))
+
 
 def metric_calinski_harabasz(X, labels):
     # Isolate points that actually belong to a cluster

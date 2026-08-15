@@ -18,7 +18,6 @@ from metrics import (
     metric_spearman_correlation,
     metric_trustworthiness,
     metric_spatial_entropy,
-    metric_calinski_harabasz,
     metric_overplotting_penalty,
     metric_hopkins_statistic,
 )
@@ -134,7 +133,6 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     wall_clock_time = np.zeros((len(epsilons), len(outputDimensions)))
     absolute_difference = np.zeros((len(epsilons), len(outputDimensions)))
     spatial_entropy = np.zeros((len(epsilons), len(outputDimensions)))
-    calinski_harabasz = np.zeros((len(epsilons), len(outputDimensions)))
     overplotting_penalty = np.zeros((len(epsilons), len(outputDimensions)))
     hopkins_statistic = np.zeros((len(epsilons), len(outputDimensions)))
     dbscan_clusters = np.zeros((len(epsilons), len(outputDimensions)))
@@ -191,13 +189,10 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
             n_clusters = len(set(dbscan_labels) - {-1})
             dbscan_clusters[x][y] = n_clusters
             entropy_val = metric_spatial_entropy(loaded_emb)
-            
-            calinski_val = metric_calinski_harabasz(loaded_emb, dbscan_labels)
             overplot_val = metric_overplotting_penalty(loaded_emb)
             hopkins_val = metric_hopkins_statistic(loaded_emb)
 
             spatial_entropy[x][y] = entropy_val
-            calinski_harabasz[x][y] = calinski_val
             overplotting_penalty[x][y] = overplot_val
             hopkins_statistic[x][y] = hopkins_val
 
@@ -291,7 +286,6 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
         "average_metrics": average_metrics,
         "dbscan_clusters": dbscan_clusters,
         "spatial_entropy": spatial_entropy,
-        "calinski_harabasz": calinski_harabasz,
         "overplotting_penalty": overplotting_penalty,
         "hopkins_statistic": hopkins_statistic,
         "embeddingModel": embeddingModel,
