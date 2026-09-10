@@ -5,7 +5,13 @@ import numpy as np
 from Layers import NoiseLayer, ReductionLayer
 import matplotlib.pyplot as plt
 import seaborn as sns
-from metrics import metric_pearson_correlation, metric_cluster_ordering, metric_continuity
+from metrics import (
+    metric_pearson_correlation,
+    metric_cluster_ordering,
+    metric_continuity,
+    metric_procrustes,
+    metric_pairwise_distance_kl,
+)
 from scipy.spatial.distance import pdist
 #START = 0 
 #END = 0 
@@ -16,9 +22,20 @@ def Factory(layers, embeddingFile, proven, comparison, metrics):
     loaded_embeddings = loaded["embeddings"]
     loaded_categories = loaded["categories"]
     loaded_categories_list = loaded["categorieslist"]
-    #loaded_texts = loaded["texts"]
-    dataset = str(np.asarray(loaded["dataset"]).item()) if "dataset" in loaded else "unknown"
+    try:
+        from embedding.dataset_config import canonical_dataset_name
+    except ImportError:
+        try:
+            from dataset_config import canonical_dataset_name
+        except ImportError:
+            def canonical_dataset_name(x=None, **kw):
+                return "agnews" if x and "news" in str(x).lower() else ("yelp" if x and "yelp" in str(x).lower() else "emails")
+
+    raw_ds = str(np.asarray(loaded["dataset"]).item()) if "dataset" in loaded else None
+    cats_list = list(loaded_categories_list) if loaded_categories_list is not None else None
+    dataset = canonical_dataset_name(raw_ds, dir_context=embeddingFile, categories=cats_list)
     unchanged = loaded_embeddings
+
     original_embeddings = loaded_embeddings.copy()
     
     metric = []
@@ -52,6 +69,12 @@ def Factory(layers, embeddingFile, proven, comparison, metrics):
         metric.append(continunity)
         metric.append(cluster_ordering)
         metric.append(pearson)
+
+        if comparison:
+            procrustes = metric_procrustes(loaded_embeddings, unchanged)
+            pairwise_kl = metric_pairwise_distance_kl(loaded_embeddings, unchanged)
+            metric.append(procrustes)
+            metric.append(pairwise_kl)
 
 
     

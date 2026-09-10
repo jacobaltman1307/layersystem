@@ -19,11 +19,31 @@ def _str_from_npz(val):
     return str(v.item()) if v.ndim == 0 else str(val)
 
 
+try:
+    from embedding.dataset_config import canonical_dataset_name
+except ImportError:
+    try:
+        from dataset_config import canonical_dataset_name
+    except ImportError:
+        def canonical_dataset_name(name=None, dir_context=None, categories=None):
+            if dir_context:
+                d = dir_context.lower()
+                if "agnews" in d: return "agnews"
+                if "email" in d: return "emails"
+                if "yelp" in d: return "yelp"
+            if name and str(name).lower() in ("agnews", "news", "ag_news"):
+                return "agnews"
+            if name and str(name).lower() == "yelp":
+                return "yelp"
+            return "emails"
+
+
 def _extract_metadata(file_path):
     """
     Try to extract (dataset, embedding_model, primary_dim_reduct) from
     a .npz file.  Falls back to parsing the directory structure if the
     metadata keys are missing inside the file.
+    Always standardizes dataset names to 'agnews', 'emails', or 'yelp'.
 
     Expected directory layout (from gridsearch.py saveResults):
         runs/<dataset>/<embeddingModel>/<dimReductionType>/*.npz
@@ -50,21 +70,29 @@ def _extract_metadata(file_path):
     # --- Fallback: derive from directory path ---
     # Expected: .../runs/<dataset>/<embedding>/<dimreduct>/file.npz
     parts = os.path.normpath(file_path).split(os.sep)
-    # Find "runs" in the path and take the three parts after it
+    dir_dataset = None
     try:
         idx = len(parts) - 1 - parts[::-1].index("runs")  # last occurrence
         if idx + 3 < len(parts):
-            dataset         = dataset         or parts[idx + 1]
+            dir_dataset     = parts[idx + 1]
             embedding_model = embedding_model or parts[idx + 2]
             dim_reduct      = dim_reduct      or parts[idx + 3]
     except ValueError:
         pass  # "runs" not in path
+
+    # Resolve dataset to canonical name ('agnews', 'emails', 'yelp')
+    canonical_from_dir = canonical_dataset_name(dir_dataset, dir_context=file_path) if dir_dataset else None
+    if canonical_from_dir in ("agnews", "emails", "yelp"):
+        dataset = canonical_from_dir
+    else:
+        dataset = canonical_dataset_name(dataset, dir_context=file_path)
 
     return (
         dataset         or "Unknown",
         embedding_model or "Unknown",
         dim_reduct      or "Unknown",
     )
+
 
 
 # ---------------------------------------------------------------------------

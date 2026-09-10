@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
+try:
+    from metrics import compute_scaled_human_utility
+except ImportError:
+    compute_scaled_human_utility = None
+
 # Written in part by gemini 3.1 Pro and Claude Opus 4.6
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -13,14 +18,16 @@ import seaborn as sns
 
 # The main metrics in the order defined/plotted in gridsearch.py
 METRICS_INFO = [
-    ("continuity",       "Continuity"),
-    ("trustworthiness",  "Trustworthiness"),
-    ("cluster_ordering", "Cluster Ordering"),
-    ("pearson",          "Pearson Correlation"),
-    ("spearman",         "Spearman Correlation"),
-    ("silhouette",       "Silhouette Score"),
-    ("average_metrics",  "Average Metrics"),
-    ("wall_clock_time",  "CPU Process Time (s)"),
+    ("continuity",           "Continuity"),
+    ("trustworthiness",      "Trustworthiness"),
+    ("cluster_ordering",     "Cluster Ordering"),
+    ("pearson",              "Pearson Correlation"),
+    ("spearman",             "Spearman Correlation"),
+    ("silhouette",           "Silhouette Score"),
+    ("procrustes",           "Procrustes Disparity"),
+    ("pairwise_distance_kl", "Pairwise Distance KL"),
+    ("average_metrics",      "Average Metrics"),
+    ("wall_clock_time",      "CPU Process Time (s)"),
 ]
 
 # Human utility metrics (separate plot via -hu / --human-utility)
@@ -44,11 +51,13 @@ METRIC_RANGES = {
     "pearson":          (-1.0, 1.0),
     "spearman":         (-1.0, 1.0),
     "silhouette":       (-1.0, 1.0),
+    "procrustes":       (0.0,  1.0),
+    "pairwise_distance_kl": (0.0, None),
     "average_metrics":  (-1.0, 1.0),
     "hopkins_statistic": (0.0, 1.0),
     "overplotting_penalty": (0.0, 1.0),
     "spatial_entropy":  (0.0, 1.0),
-    "estimated_human_utility": (None, None),
+    "estimated_human_utility": (0.0, 1.0),
     # dbscan_clusters -> auto-scale
 }
 
@@ -61,7 +70,30 @@ def _cmap_for(metric_key):
 
 
 def _fmt_for(metric_key):
-    return ".0f" if metric_key in ("dbscan_clusters",) else ".3f"
+    if metric_key == "dbscan_clusters":
+        return ".0f"
+    if metric_key in ("procrustes", "pairwise_distance_kl"):
+        return ".4f"
+    return ".3f"
+
+
+try:
+    from embedding.dataset_config import canonical_dataset_name
+except ImportError:
+    try:
+        from dataset_config import canonical_dataset_name
+    except ImportError:
+        def canonical_dataset_name(name=None, dir_context=None, categories=None):
+            if dir_context:
+                d = dir_context.lower()
+                if "agnews" in d: return "agnews"
+                if "email" in d: return "emails"
+                if "yelp" in d: return "yelp"
+            if name and str(name).lower() in ("agnews", "news", "ag_news"):
+                return "agnews"
+            if name and str(name).lower() == "yelp":
+                return "yelp"
+            return "emails"
 
 
 def _str_from_npz(val):
@@ -70,6 +102,7 @@ def _str_from_npz(val):
         return None
     v = np.asarray(val)
     return str(v.item()) if v.ndim == 0 else str(val)
+
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +138,21 @@ def load_run(file_path):
 
     file_basename = os.path.splitext(os.path.basename(file_path))[0]
 
+    raw_dataset = _str_from_npz(data.get("dataset", None))
+    parts = os.path.normpath(file_path).split(os.sep)
+    dir_dataset = None
+    try:
+        idx = len(parts) - 1 - parts[::-1].index("runs")
+        if idx + 1 < len(parts):
+            dir_dataset = parts[idx + 1]
+    except ValueError:
+        pass
+    canonical_from_dir = canonical_dataset_name(dir_dataset, dir_context=file_path) if dir_dataset else None
+    if canonical_from_dir in ("agnews", "emails", "yelp"):
+        dataset = canonical_from_dir
+    else:
+        dataset = canonical_dataset_name(raw_dataset, dir_context=file_path)
+
     run_data = {
         "file_basename":        file_basename,
         "epsilons":             epsilons,
@@ -112,9 +160,10 @@ def load_run(file_path):
         "embedding_model":      _str_from_npz(data.get("embeddingModel",           None)),
         "primary_dim_reduct":   _str_from_npz(data.get("primaryDimReductType",     None)),
         "secondary_dim_reduct": _str_from_npz(data.get("secondaryDimReductType",   None)),
-        "dataset":              _str_from_npz(data.get("dataset",                  None)),
+        "dataset":              dataset,
         "metrics": {}
     }
+
 
     for metric_key, _ in ALL_METRICS_INFO:
         metric_data = data.get(metric_key, None)
@@ -132,20 +181,20 @@ def load_run(file_path):
                     print(f"Warning: Could not compute 'average_metrics' on the fly for '{file_path}'. Error: {e}")
                     metric_data = np.zeros((len(epsilons), len(output_dimensions)))
             elif metric_key == "estimated_human_utility":
-                # Compute as the average of the other human utility metrics
-                hu_keys = [k for k, _ in HUMAN_UTILITY_METRICS_INFO
-                           if k != "estimated_human_utility"]
-                available = []
-                for hk in hu_keys:
-                    hk_data = data.get(hk, None)
-                    if hk_data is not None:
-                        available.append(hk_data)
-                    else:
-                        # Also check if we already loaded it above
-                        if hk in run_data["metrics"]:
-                            available.append(run_data["metrics"][hk])
-                if available:
-                    metric_data = np.mean(available, axis=0)
+                # Compute as the average of the scaled human utility metrics
+                if "estimated_human_utility" in data and data["estimated_human_utility"] is not None:
+                    metric_data = data["estimated_human_utility"]
+                elif compute_scaled_human_utility is not None:
+                    hu_dict = {}
+                    for hk in ("dbscan_clusters", "spatial_entropy", "overplotting_penalty", "hopkins_statistic", "absolute_difference"):
+                        if hk in data and data[hk] is not None:
+                            hu_dict[hk] = data[hk]
+                        elif hk in run_data["metrics"]:
+                            hu_dict[hk] = run_data["metrics"][hk]
+                    metric_data = compute_scaled_human_utility(hu_dict)
+                    if metric_data is None:
+                        print(f"Warning: No human utility sub-metrics found in '{file_path}'. Using zeros.")
+                        metric_data = np.zeros((len(epsilons), len(output_dimensions)))
                 else:
                     print(f"Warning: No human utility sub-metrics found in '{file_path}'. Using zeros.")
                     metric_data = np.zeros((len(epsilons), len(output_dimensions)))

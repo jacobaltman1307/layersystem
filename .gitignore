@@ -4,27 +4,61 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Virtual Environment
+# Virtual Environment & Python Version
 .venv/
 venv/
 env/
 ENV/
+.python-version
 
+# Large Data & Dataset Files
+*.csv
+*.tsv
+*.parquet
+*.jsonl
 
+# Array & Embedding Files
+*.npz
+*.npy
+
+# Model Weights & Checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.h5
+
+# Archives & Compressed Files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
 *.7z
-*Zone.Identifier
+*.rar
 
-
-*.png
+# Output, Runs, Plots & Generated Artifacts
 runs/
 output/
 plots/
 searches/
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
 *.html
+*.log
+run_counts.csv
 
-
+# IDE & OS Files
 .vscode/
 .idea/
 .DS_Store
+*Zone.Identifier
+*.tmp
+*.tmp.*
+
 
 

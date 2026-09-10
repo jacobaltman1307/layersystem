@@ -171,3 +171,127 @@ def metric_hopkins_statistic(X, max_samples=1000, random_state=None):
         return 0.5  # Avoid division by zero, return baseline for random distribution
         
     return u_squared / (u_squared + w_squared)
+
+
+def metric_procrustes(X, Y):
+    """
+    Compute Procrustes disparity between two embedding layouts X (with noise)
+    and Y (without noise). Both must have the same shape (n_samples, n_dimensions).
+    Returns disparity in [0.0, 1.0]. Lower values indicate better shape preservation.
+    """
+    try:
+        x_arr = np.asarray(X, dtype=np.float64)
+        y_arr = np.asarray(Y, dtype=np.float64)
+        if x_arr.shape != y_arr.shape or x_arr.shape[0] < 2:
+            return 0.0
+        _, _, disparity = spatial.procrustes(y_arr, x_arr)
+        return float(np.clip(disparity, 0.0, 1.0))
+    except Exception:
+        return 0.0
+
+
+def metric_pairwise_distance_kl(X, Y, max_samples=1000, random_state=42):
+    """
+    Compute the KL divergence between relative pairwise distance probability distributions
+    of layout Y (unperturbed, without noise) and layout X (perturbed, with noise):
+    D_KL(P_unperturbed || Q_noisy).
+    Subsamples to max_samples for consistent cross-run speed and memory bounds.
+    Returns non-negative float. Lower values indicate better relative distance preservation.
+    """
+    try:
+        x_arr = np.asarray(X, dtype=np.float64)
+        y_arr = np.asarray(Y, dtype=np.float64)
+        n = x_arr.shape[0]
+        if n < 2 or x_arr.shape != y_arr.shape:
+            return 0.0
+
+        M = min(n, max_samples)
+        if M < n:
+            rng = np.random.default_rng(random_state)
+            idx = rng.choice(n, size=M, replace=False)
+            x_sub = x_arr[idx]
+            y_sub = y_arr[idx]
+        else:
+            x_sub = x_arr
+            y_sub = y_arr
+
+        d_y = spatial.distance.pdist(y_sub, metric='euclidean')
+        d_x = spatial.distance.pdist(x_sub, metric='euclidean')
+
+        sum_y = np.sum(d_y)
+        sum_x = np.sum(d_x)
+        if sum_y == 0 or sum_x == 0:
+            return 0.0
+
+        P = d_y / sum_y
+        Q = d_x / sum_x
+
+        # Stabilize with small epsilon to prevent log(0) or div by 0
+        eps = 1e-12
+        P = np.clip(P, eps, 1.0)
+        P /= np.sum(P)
+        Q = np.clip(Q, eps, 1.0)
+        Q /= np.sum(Q)
+
+        kl = stats.entropy(P, Q)
+        return float(max(0.0, kl))
+    except Exception:
+        return 0.0
+
+
+def compute_scaled_human_utility(metrics_dict):
+    """
+    Compute Estimated Human Utility as the average of polarity-aligned,
+    min-max normalized human visual utility sub-metrics:
+      - Benefit metrics (higher is better):
+          'dbscan_clusters', 'spatial_entropy', 'hopkins_statistic'
+      - Cost / Penalty metrics (lower is better, inverted so higher = better):
+          'overplotting_penalty', 'absolute_difference'
+
+    Each available 2D sub-metric grid is scaled to [0.0, 1.0].
+    Returns an array of the same shape with values strictly in [0.0, 1.0],
+    or None if no sub-metrics are found.
+    """
+    if not metrics_dict:
+        return None
+
+    benefit_keys = ("dbscan_clusters", "spatial_entropy", "hopkins_statistic")
+    penalty_keys = ("overplotting_penalty", "absolute_difference")
+
+    scaled_grids = []
+
+    for k in benefit_keys:
+        if k in metrics_dict and metrics_dict[k] is not None:
+            arr = np.asarray(metrics_dict[k], dtype=np.float64)
+            if arr.size == 0:
+                continue
+            min_v = np.nanmin(arr)
+            max_v = np.nanmax(arr)
+            if np.isnan(min_v) or np.isnan(max_v):
+                continue
+            if max_v > min_v:
+                s = (arr - min_v) / (max_v - min_v)
+            else:
+                s = np.ones_like(arr)
+            scaled_grids.append(s)
+
+    for k in penalty_keys:
+        if k in metrics_dict and metrics_dict[k] is not None:
+            arr = np.asarray(metrics_dict[k], dtype=np.float64)
+            if arr.size == 0:
+                continue
+            min_v = np.nanmin(arr)
+            max_v = np.nanmax(arr)
+            if np.isnan(min_v) or np.isnan(max_v):
+                continue
+            if max_v > min_v:
+                s = (max_v - arr) / (max_v - min_v)
+            else:
+                s = np.ones_like(arr)
+            scaled_grids.append(s)
+
+    if not scaled_grids:
+        return None
+
+    composite = np.nanmean(np.stack(scaled_grids, axis=0), axis=0)
+    return np.clip(composite, 0.0, 1.0)

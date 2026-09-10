@@ -20,7 +20,25 @@ from metrics import (
     metric_spatial_entropy,
     metric_overplotting_penalty,
     metric_hopkins_statistic,
+    metric_procrustes,
+    metric_pairwise_distance_kl,
+    compute_scaled_human_utility,
 )
+
+
+try:
+    from embedding.dataset_config import canonical_dataset_name
+except ImportError:
+    try:
+        from dataset_config import canonical_dataset_name
+    except ImportError:
+        def canonical_dataset_name(name=None, dir_context=None, categories=None):
+            if name and str(name).lower() in ("agnews", "news", "ag_news"):
+                return "agnews"
+            if name and str(name).lower() == "yelp":
+                return "yelp"
+            return "emails"
+
 
 
 def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,unchanged,original_embeddings, comparison, D_high):
@@ -58,11 +76,13 @@ def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,un
 
 
 
-def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="unknown", plotting=True, max_samples=None):
+def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="emails", plotting=True, max_samples=None):
+    dataset = canonical_dataset_name(dataset)
     loaded = np.load(embeddingFile, allow_pickle=True)
     loaded_embeddings = loaded["embeddings"]
     loaded_categories = loaded["categories"]
     loaded_categories_list = loaded["categorieslist"]
+
     
     if max_samples is not None and len(loaded_embeddings) > max_samples:
         print(f"Subsampling dataset from {len(loaded_embeddings)} to {max_samples} samples for memory efficiency...")
@@ -90,22 +110,22 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     adaptive_dims = list(range(max_cat_dim, 1, -1)) if max_cat_dim >= 2 else [2]
 
     if resolution == 3:
-        epsilons = [1,10,50,100,500,1000,5000,10000]
+        epsilons = [1,10,50,100,500,1000,5000,10000,1000000000]
         outputDimensions = [768,512,256,128,64,32,16,8,4,2]
     elif resolution == 2:
         epsilons = [1,10,50,100,500,1000]
         outputDimensions = [768,384,128,48,8,2]
     elif resolution == 4:
-        epsilons = [.1,.5,1,5,10,25,50,100,250,500,1000,2500,5000,10000]
+        epsilons = [.1,.5,1,5,10,25,50,100,250,500,1000,2500,5000,10000,1000000000]
         outputDimensions = [768,512,256,128,96,64,32,16,12,8,6,4,3,2]
     elif resolution == 0:
         epsilons = [1,2]
         outputDimensions = [768,2]    
     elif resolution == 5:
-        epsilons = [1,10,50,100,500,1000,5000,10000]
+        epsilons = [1,10,50,100,500,1000,5000,10000,1000000000]
         outputDimensions = adaptive_dims
     else:
-        epsilons = [1,10,50,100,500,1000]
+        epsilons = [1,10,50,100,500,1000,1000000000]
         outputDimensions = [768,3,2]
 
     # Automatically adapt output dimensions for constrained algorithms like LDA and TSNE
@@ -136,8 +156,11 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     overplotting_penalty = np.zeros((len(epsilons), len(outputDimensions)))
     hopkins_statistic = np.zeros((len(epsilons), len(outputDimensions)))
     dbscan_clusters = np.zeros((len(epsilons), len(outputDimensions)))
+    procrustes = np.zeros((len(epsilons), len(outputDimensions)))
+    pairwise_distance_kl = np.zeros((len(epsilons), len(outputDimensions)))
     
     save_dict = {}
+
 
     
 
@@ -196,6 +219,9 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
             overplotting_penalty[x][y] = overplot_val
             hopkins_statistic[x][y] = hopkins_val
 
+            # Evaluation comparing with noise vs without noise
+            procrustes[x][y] = metric_procrustes(loaded_emb, unchanged_emb)
+            pairwise_distance_kl[x][y] = metric_pairwise_distance_kl(loaded_emb, unchanged_emb)
 
             # Save embeddings for this epsilon/dimension configuration
             save_dict[f"loaded_embeddings_eps_{epsilon}_dim_{outputDim}"] = loaded_emb
@@ -208,13 +234,26 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     print("Pearson:\n", pearson)
     print("Spearman:\n", spearman)
     print("Silhouette:\n", silhouette)
+    print("Procrustes Disparity:\n", procrustes)
+    print("Pairwise Distance KL:\n", pairwise_distance_kl)
     #print("Grid:\n", grid)
     print(len(grid))
 
     average_metrics = (continuity + trustworthiness + cluster_ordering + pearson + spearman + silhouette) / 6.0
     #average_metrics = (continuity + trustworthiness + np.abs(cluster_ordering) + np.abs(pearson) + np.abs(spearman) + silhouette) / 6.0
+
+    estimated_human_utility = compute_scaled_human_utility({
+        "dbscan_clusters": dbscan_clusters,
+        "spatial_entropy": spatial_entropy,
+        "overplotting_penalty": overplotting_penalty,
+        "hopkins_statistic": hopkins_statistic,
+        "absolute_difference": absolute_difference,
+    })
+    if estimated_human_utility is not None:
+        print("Estimated Human Utility (Scaled):\n", estimated_human_utility)
+
     if plotting:
-        fig, axes = plt.subplots(2, 4, figsize=(32, 12))
+        fig, axes = plt.subplots(2, 5, figsize=(40, 12))
 
         fig.suptitle(f"Dataset: {dataset}  |  Embedding Model: {embeddingModel}", fontsize=12)
         sns.heatmap(continuity, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=0.0, vmax=1.0, ax=axes[0, 0])
@@ -232,44 +271,43 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
         axes[0, 2].set_xlabel('Output Dimension')
         axes[0, 2].set_ylabel('Epsilon')
 
-        sns.heatmap(pearson, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[0, 3])
-        axes[0, 3].set_title('Pearson Correlation')
+        sns.heatmap(silhouette, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[0, 3])
+        axes[0, 3].set_title('Silhouette')
         axes[0, 3].set_xlabel('Output Dimension')
         axes[0, 3].set_ylabel('Epsilon')
 
-        sns.heatmap(spearman, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[1, 0])
-        axes[1, 0].set_title('Spearman Correlation')
+        sns.heatmap(procrustes, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".4f", cmap="viridis", vmin=0.0, vmax=1.0, ax=axes[0, 4])
+        axes[0, 4].set_title('Procrustes Disparity')
+        axes[0, 4].set_xlabel('Output Dimension')
+        axes[0, 4].set_ylabel('Epsilon')
+
+        sns.heatmap(pearson, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[1, 0])
+        axes[1, 0].set_title('Pearson')
         axes[1, 0].set_xlabel('Output Dimension')
         axes[1, 0].set_ylabel('Epsilon')
 
-        sns.heatmap(silhouette, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[1, 1])
-        axes[1, 1].set_title('Silhouette Score')
+        sns.heatmap(spearman, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[1, 1])
+        axes[1, 1].set_title('Spearman')
         axes[1, 1].set_xlabel('Output Dimension')
         axes[1, 1].set_ylabel('Epsilon')
 
-        sns.heatmap(average_metrics, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=-1.0, vmax=1.0, ax=axes[1, 2])
-        axes[1, 2].set_title('Average Metrics')
+        sns.heatmap(pairwise_distance_kl, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".4f", cmap="viridis", vmin=0.0, ax=axes[1, 2])
+        axes[1, 2].set_title('Pairwise Distance KL')
         axes[1, 2].set_xlabel('Output Dimension')
         axes[1, 2].set_ylabel('Epsilon')
 
-        sns.heatmap(wall_clock_time, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", ax=axes[1, 3])
-        axes[1, 3].set_title('CPU Process Time (s)')
+        sns.heatmap(wall_clock_time, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".2f", cmap="viridis", ax=axes[1, 3])
+        axes[1, 3].set_title('Time (s)')
         axes[1, 3].set_xlabel('Output Dimension')
         axes[1, 3].set_ylabel('Epsilon')
 
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        fig2.suptitle(f"DBSCAN Estimated Clusters — {dataset} — {embeddingModel}", fontsize=12)
-        sns.heatmap(dbscan_clusters, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".0f", cmap="plasma", ax=ax2)
-        ax2.set_title('DBSCAN Estimated Clusters')
-        ax2.set_xlabel('Output Dimension')
-        ax2.set_ylabel('Epsilon')
-        fig2.tight_layout()
-        fig2.savefig(f"gridsearch_dbscan_clusters_{dataset}_{embeddingModel}_{dimensionReductionType}_{run!s}.png")
-        plt.close(fig2)
+        sns.heatmap(average_metrics, xticklabels=outputDimensions, yticklabels=epsilons, annot=True, fmt=".3f", cmap="viridis", vmin=0.0, vmax=1.0, ax=axes[1, 4])
+        axes[1, 4].set_title('Average Metrics')
+        axes[1, 4].set_xlabel('Output Dimension')
+        axes[1, 4].set_ylabel('Epsilon')
 
         plt.tight_layout()
-        fig.subplots_adjust(top=0.94)
-        plt.savefig(f"gridsearch_heatmaps_{dataset}_{embeddingModel}_{dimensionReductionType}_{run!s}.png")
+        plt.show()
 
     # Save metrics and embeddings to npz file
     save_dict.update({
@@ -288,6 +326,9 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
         "spatial_entropy": spatial_entropy,
         "overplotting_penalty": overplotting_penalty,
         "hopkins_statistic": hopkins_statistic,
+        "estimated_human_utility": estimated_human_utility,
+        "procrustes": procrustes,
+        "pairwise_distance_kl": pairwise_distance_kl,
         "embeddingModel": embeddingModel,
         "primaryDimReductType": dimensionReductionType,
         "secondaryDimReductType": secondDimensionReductionType,
@@ -298,7 +339,8 @@ def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReduct
     saveResults(save_dict, dimensionReductionType, run, embeddingModel, dataset)
     
 
-def saveResults(save_dict, dimensionReductionType, run, embeddingModel, dataset="unknown"):
+def saveResults(save_dict, dimensionReductionType, run, embeddingModel, dataset="emails"):
+    dataset = canonical_dataset_name(dataset)
     path = f"runs/{dataset}/{embeddingModel}/{dimensionReductionType}/"
     if not os.path.exists(path):
          os.makedirs(path)
@@ -349,8 +391,9 @@ def main():
     )
     parser.add_argument(
         "--dataset",
+        choices=["agnews", "emails", "yelp"],
         default=None,
-        help="Dataset name (e.g., 'news', 'agnews', 'yelp'). Auto-detected from embedding file if not specified."
+        help="Dataset name ('agnews', 'emails', 'yelp'). Auto-detected from embedding file if not specified."
     )
     parser.add_argument(
         "-m", "--max-samples",
@@ -382,19 +425,30 @@ def main():
         else:
             embeddingModel = "UnknownModel"
 
-        # Auto-detect dataset from npz if not specified via CLI
+        # Auto-detect dataset from npz or filename if not specified via CLI
+        cats_list = list(loaded["categorieslist"]) if "categorieslist" in loaded else None
         if args.dataset:
-            dataset = args.dataset
+            dataset = canonical_dataset_name(args.dataset, dir_context=embedding_file, categories=cats_list)
         elif "dataset" in loaded:
             ds_val = loaded["dataset"]
-            dataset = str(np.asarray(ds_val).item()) if np.asarray(ds_val).ndim == 0 else str(ds_val)
+            raw_ds = str(np.asarray(ds_val).item()) if np.asarray(ds_val).ndim == 0 else str(ds_val)
+            dataset = canonical_dataset_name(raw_ds, dir_context=embedding_file, categories=cats_list)
         else:
-            dataset = "unknown"
+            fname = os.path.basename(embedding_file).lower()
+            if "agnews" in fname:
+                raw_ds = "agnews"
+            elif "yelp" in fname:
+                raw_ds = "yelp"
+            else:
+                raw_ds = "emails"
+            dataset = canonical_dataset_name(raw_ds, dir_context=embedding_file, categories=cats_list)
+
         print(f"Dataset: {dataset}, Embedding Model: {embeddingModel}")
     except FileNotFoundError as e:
         print(f"Error loading embedding model from '{embedding_file}': {e}")
         embeddingModel = "UnknownModel"
-        dataset = args.dataset or "unknown"
+        dataset = canonical_dataset_name(args.dataset or "emails")
+
 
     # Determine which runs to execute
     if args.run is not None:
