@@ -76,8 +76,16 @@ def Factory(layers,loaded_embeddings,loaded_categories,loaded_categories_list,un
 
 
 
-def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="emails", plotting=True, max_samples=None):
+def gridSearch(embeddingFile, run, dimensionReductionType, secondDimensionReductionType, resolution, embeddingModel, dataset="emails", plotting=True, max_samples=None, skip_existing=False):
     dataset = canonical_dataset_name(dataset)
+    save_dim_type = dimensionReductionType
+    if dimensionReductionType != secondDimensionReductionType:
+        save_dim_type = f"{dimensionReductionType}_{secondDimensionReductionType}"
+    target_path = f"runs/{dataset}/{embeddingModel}/{save_dim_type}/gridsearch_results_{save_dim_type}_{run!s}.npz"
+    if skip_existing and os.path.exists(target_path):
+        print(f"Skipping run {run}: {target_path} already exists.")
+        return
+
     loaded = np.load(embeddingFile, allow_pickle=True)
     loaded_embeddings = loaded["embeddings"]
     loaded_categories = loaded["categories"]
@@ -401,12 +409,55 @@ def main():
         default=None,
         help="Subsample dataset to N items max for memory-heavy algorithms like Isomap/MDS (default: None)"
     )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip execution if the target output .npz file already exists"
+    )
     args = parser.parse_args()
 
     plot = False
 
     if not args.no_plot:
         plot = True
+
+    # Sets the secondary dimension reduction type if provided
+    second_dr_type = args.dr_type_secondary if args.dr_type_secondary else args.dr_type
+    save_dim_type = f"{args.dr_type}_{second_dr_type}" if args.dr_type != second_dr_type else args.dr_type
+
+    # Determine which runs to execute
+    if args.run is not None:
+        runs_to_execute = [args.run]
+    else:
+        runs_to_execute = list(range(args.runs))
+
+    # Early check if all requested runs already exist
+    fname = os.path.basename(args.embedding_file).lower()
+    inferred_ds = args.dataset or ("agnews" if "agnews" in fname or "news" in fname else ("yelp" if "yelp" in fname else "emails"))
+    inferred_ds = canonical_dataset_name(inferred_ds)
+
+    if "vaultgemma" in fname:
+        inferred_model = "Vaultgemma-1b"
+    elif "bert" in fname:
+        inferred_model = "bert-base-nli-mean-tokens"
+    elif "embeddinggemma" in fname or "300m" in fname:
+        inferred_model = "embeddinggemma-300m"
+    elif "gemma-3" in fname or "gemma3" in fname:
+        inferred_model = "gemma-3-1b-pt"
+    elif "qwen" in fname:
+        inferred_model = "Qwen3-Embedding-8B"
+    else:
+        inferred_model = None
+
+    if args.skip_existing and inferred_model:
+        remaining_runs = [
+            r for r in runs_to_execute
+            if not os.path.exists(f"runs/{inferred_ds}/{inferred_model}/{save_dim_type}/gridsearch_results_{save_dim_type}_{r}.npz")
+        ]
+        if not remaining_runs:
+            print(f"Skipping: all requested runs ({runs_to_execute}) for {inferred_ds}/{inferred_model}/{save_dim_type} already exist.")
+            return
+        runs_to_execute = remaining_runs
 
     # Load the embedding model name and dataset from the npz file
     embedding_file = args.embedding_file
@@ -423,7 +474,7 @@ def main():
             else:
                 embeddingModel = str(emb_model_val)
         else:
-            embeddingModel = "UnknownModel"
+            embeddingModel = inferred_model or "UnknownModel"
 
         # Auto-detect dataset from npz or filename if not specified via CLI
         cats_list = list(loaded["categorieslist"]) if "categorieslist" in loaded else None
@@ -434,36 +485,17 @@ def main():
             raw_ds = str(np.asarray(ds_val).item()) if np.asarray(ds_val).ndim == 0 else str(ds_val)
             dataset = canonical_dataset_name(raw_ds, dir_context=embedding_file, categories=cats_list)
         else:
-            fname = os.path.basename(embedding_file).lower()
-            if "agnews" in fname:
-                raw_ds = "agnews"
-            elif "yelp" in fname:
-                raw_ds = "yelp"
-            else:
-                raw_ds = "emails"
-            dataset = canonical_dataset_name(raw_ds, dir_context=embedding_file, categories=cats_list)
+            dataset = canonical_dataset_name(inferred_ds, dir_context=embedding_file, categories=cats_list)
 
         print(f"Dataset: {dataset}, Embedding Model: {embeddingModel}")
     except FileNotFoundError as e:
         print(f"Error loading embedding model from '{embedding_file}': {e}")
-        embeddingModel = "UnknownModel"
-        dataset = canonical_dataset_name(args.dataset or "emails")
-
-
-    # Determine which runs to execute
-    if args.run is not None:
-        runs_to_execute = [args.run]
-    else:
-        runs_to_execute = list(range(args.runs))
-
-    #Sets the secondary dimension reduction type if provided
-    second_dr_type = args.dr_type
-    if args.dr_type_secondary:
-        second_dr_type = args.dr_type_secondary
+        embeddingModel = inferred_model or "UnknownModel"
+        dataset = canonical_dataset_name(args.dataset or inferred_ds or "emails")
 
     #Runs primary dimension reduction type
     for run in runs_to_execute:
-        gridSearch(embedding_file, run, args.dr_type, second_dr_type, args.resolution, embeddingModel, dataset=dataset, plotting=plot, max_samples=args.max_samples)
+        gridSearch(embedding_file, run, args.dr_type, second_dr_type, args.resolution, embeddingModel, dataset=dataset, plotting=plot, max_samples=args.max_samples, skip_existing=args.skip_existing)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import umap
 from sklearn.preprocessing import StandardScaler
@@ -53,7 +54,8 @@ def DimReduction(X, y, t, outputDim, catagories):
             svd = TruncatedSVD(n_components=outputDim)
             out = svd.fit_transform(X_processed)
         case "ISOMAP":
-            isomap = Isomap(n_components=outputDim, n_neighbors=15)
+            n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", -1))
+            isomap = Isomap(n_components=outputDim, n_neighbors=15, n_jobs=n_jobs)
             out = isomap.fit_transform(X_processed)
         case "MDS":
             X_proc_clean = np.nan_to_num(X_processed, nan=0.0, posinf=0.0, neginf=0.0)
