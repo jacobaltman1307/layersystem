@@ -410,7 +410,7 @@ def plot_compiled_methods(
                 ax=ax,
             )
             ax.set_title(f"{method}\n(N={n_runs} run{'s' if n_runs != 1 else ''})", fontsize=12, fontweight="bold")
-            ax.set_xlabel("Output Dimension", fontsize=10)
+            ax.set_xlabel("Noise Dimensionality", fontsize=10)
             ax.set_ylabel("Epsilon", fontsize=10)
         else:
             ax.text(0.5, 0.5, f"Metric '{metric_key}'\nNot Available", ha="center", va="center", transform=ax.transAxes)
@@ -560,7 +560,7 @@ def _draw_best_method_ax(ax, eps_list, dim_list, best_methods, best_scores, meth
                 )
 
     ax.set_title(title, fontsize=12, fontweight="bold", pad=8)
-    ax.set_xlabel("Output Dimension", fontsize=10, labelpad=6)
+    ax.set_xlabel("Noise Dimensionality", fontsize=10, labelpad=6)
     ax.set_ylabel("Epsilon", fontsize=10)
 
 

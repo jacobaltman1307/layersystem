@@ -6,8 +6,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=04:00:00
-#SBATCH --array=0-179%30         # 36 configs * 5 runs = 180 tasks (max 30 concurrent)
+#SBATCH --time=08:00:00
+#SBATCH --array=10-19,21-29,40-49,51-54,56-59,61-64,66-74,86-89,91-94,96-104,115-116,121-134,137-139,142-144,146-149,151-164,179%30 # 36 configs * 5 runs = 180 tasks (max 30 concurrent)
 #SBATCH --partition=Orion
 
 # ==============================================================================

@@ -265,7 +265,7 @@ def _plot_grid(loaded_runs, output_path, metrics_info, title_suffix=""):
                 ax=ax,
             )
             ax.set_title(f"{metric_title}\n({run_data['file_basename']})")
-            ax.set_xlabel("Output Dimension")
+            ax.set_xlabel("Noise Dimensionality")
             ax.set_ylabel("Epsilon")
 
     plt.tight_layout()
@@ -304,7 +304,7 @@ def _plot_avg_grid(loaded_runs, output_path, metrics_info, title_suffix=""):
             ax=ax,
         )
         ax.set_title(f"Average {metric_title}\n(N={N} runs)")
-        ax.set_xlabel("Output Dimension")
+        ax.set_xlabel("Noise Dimensionality")
         ax.set_ylabel("Epsilon")
 
     plt.tight_layout()
